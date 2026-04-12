@@ -8,10 +8,5 @@ Route::get('/', function () {
 
 
 Route::get('/debug', function () {
-    try {
-        $count = \App\Models\Product::count();
-        return response()->json(['products' => $count, 'db' => 'connected']);
-    } catch (\Exception $e) {
-        return response()->json(['error' => $e->getMessage()]);
-    }
+    return response()->json(['status' => 'ok', 'env' => app()->environment()]);
 });
