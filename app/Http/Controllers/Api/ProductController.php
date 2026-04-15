@@ -92,15 +92,20 @@ class ProductController extends BaseController
             return $this->error('Uploaded image is invalid.', 422);
         }
 
-        $realPath = $file->getRealPath();
-        if (! is_string($realPath) || $realPath === '') {
-            Log::error('Product image upload failed: unable to read temp file path');
-            return $this->error('Unable to process uploaded image.', 422);
+        $cloudinaryDisk = config('filesystems.disks.cloudinary', []);
+        $hasCloudinaryConfig = ! empty($cloudinaryDisk['url'])
+            || (! empty($cloudinaryDisk['key']) && ! empty($cloudinaryDisk['secret']) && ! empty($cloudinaryDisk['cloud']));
+        if (! $hasCloudinaryConfig) {
+            Log::error('Cloudinary upload failed: missing cloudinary disk configuration');
+            return $this->error('Cloudinary is not configured on the server.', 500);
         }
 
+        $filePath = $file->getPathname();
+
         try {
-            $result = cloudinary()->uploadApi()->upload($realPath, [
+            $result = cloudinary()->uploadApi()->upload($filePath, [
                 'folder' => 'guess/products',
+                'resource_type' => 'image',
             ]);
 
             Log::info('Cloudinary upload response', [
@@ -108,8 +113,8 @@ class ProductController extends BaseController
             ]);
         } catch (\Throwable $e) {
             Log::error('Cloudinary upload exception', [
+                'type' => $e::class,
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
             return $this->error('Failed to upload image to Cloudinary.', 500);
         }
