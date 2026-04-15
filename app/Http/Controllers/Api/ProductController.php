@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use App\Support\ProductPresenter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class ProductController extends BaseController
@@ -68,14 +69,57 @@ class ProductController extends BaseController
 
     public function uploadImage(Request $request)
     {
-        $request->validate(['image' => 'required|image|max:5120']);
-        $result = cloudinary()->uploadApi()->upload($request->file('image')->getRealPath(), [
-            'folder' => 'guess/products',
+        Log::info('Product image upload request received', [
+            'has_image' => $request->hasFile('image'),
+            'content_type' => $request->header('Content-Type'),
+            'request_keys' => array_keys($request->all()),
         ]);
-        $url = $result['secure_url'] ?? null;
 
+        if (! $request->hasFile('image')) {
+            Log::warning('Product image upload failed: missing image file', [
+                'request_keys' => array_keys($request->all()),
+            ]);
+            return $this->error('Image file is required. Use field name "image".', 422);
+        }
+
+        $request->validate(['image' => 'image|max:5120']);
+
+        $file = $request->file('image');
+        if (! $file || ! $file->isValid()) {
+            Log::warning('Product image upload failed: invalid uploaded file', [
+                'error' => $file?->getErrorMessage(),
+            ]);
+            return $this->error('Uploaded image is invalid.', 422);
+        }
+
+        $realPath = $file->getRealPath();
+        if (! is_string($realPath) || $realPath === '') {
+            Log::error('Product image upload failed: unable to read temp file path');
+            return $this->error('Unable to process uploaded image.', 422);
+        }
+
+        try {
+            $result = cloudinary()->uploadApi()->upload($realPath, [
+                'folder' => 'guess/products',
+            ]);
+
+            Log::info('Cloudinary upload response', [
+                'result' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Cloudinary upload exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return $this->error('Failed to upload image to Cloudinary.', 500);
+        }
+
+        $url = $result['secure_url'] ?? null;
         if (! is_string($url) || $url === '') {
-            return $this->error('Upload failed', 500);
+            Log::error('Cloudinary upload missing secure_url', [
+                'result' => $result,
+            ]);
+            return $this->error('Upload failed: Cloudinary did not return a URL.', 500);
         }
 
         return $this->success(['url' => $url], 'Uploaded');
