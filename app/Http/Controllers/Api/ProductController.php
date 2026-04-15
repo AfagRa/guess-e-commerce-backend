@@ -69,8 +69,14 @@ class ProductController extends BaseController
     public function uploadImage(Request $request)
     {
         $request->validate(['image' => 'required|image|max:5120']);
-        $path = $request->file('image')->store('products', 'public');
-        $url = asset('storage/'.$path);
+        $result = cloudinary()->uploadApi()->upload($request->file('image')->getRealPath(), [
+            'folder' => 'guess/products',
+        ]);
+        $url = $result['secure_url'] ?? null;
+
+        if (! is_string($url) || $url === '') {
+            return $this->error('Upload failed', 500);
+        }
 
         return $this->success(['url' => $url], 'Uploaded');
     }
